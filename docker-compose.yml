@@ -1,0 +1,21 @@
+version: '3'
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"  # Map your Go application's port to the host
+    environment:
+      - DB_USER=postgres
+      - DB_PASSWORD=pass
+      - DB_HOST=db  # Use the service name of the PostgreSQL container
+      - DB_PORT=5432
+      - DB_NAME=mydb
+    depends_on:
+      - db  # Make sure the database service is started before the app
+
+  db:
+    image: postgresql_database
+    environment:
+      - POSTGRES_USER=posgress
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=mydb
