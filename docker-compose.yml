@@ -14,7 +14,7 @@ services:
       - db  # Make sure the database service is started before the app
 
   db:
-    image: postgresql_database
+    image: postgres
     environment:
       - POSTGRES_USER=posgress
       - POSTGRES_PASSWORD=password

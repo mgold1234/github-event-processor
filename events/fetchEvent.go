@@ -24,13 +24,11 @@ var uniqueRepoURLs []string
 var uniqueEmails []string
 
 var (
-	eventTypeCountMutex sync.Mutex
 	uniqueActorsMutex   sync.Mutex
 	uniqueRepoURLsMutex sync.Mutex
 	uniqueEmailsMutex   sync.Mutex
-	fetchMutex          sync.Mutex // Create a mutex to ensure only one goroutine is running FetchAndProcessEvents
 )
-var isFetching = false // Flag to track if FetchAndProcessEvents is already running
+
 var fetchOnce sync.Once
 
 var db *sql.DB
@@ -54,6 +52,30 @@ func init() {
 		log.Fatalf("Error connecting to the database: %v", err)
 	}
 	createGitHubEventsTable()
+}
+
+func InitiateShutdown() {
+	client := &http.Client{Timeout: time.Second * 10}
+	req, err := http.NewRequest("GET", "http://localhost:8080/shutdown", nil)
+	if err != nil {
+		log.Fatalf("Error creating request: %v", err)
+		return
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatalf("Error sending request: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Unexpected status code: %d", resp.StatusCode)
+		return
+	}
+
+	// The server has initiated the shutdown process
+	log.Println("Shutdown initiated.")
 }
 
 func createGitHubEventsTable() {
@@ -102,32 +124,12 @@ func getGitHubEvents() ([]models.GitHubEvent, error) {
 
 func CleanupOldData(db *sql.DB) {
 	// Calculate the date threshold based on your retention policy
-	retentionThreshold := time.Now().AddDate(0, 0, -1) // Retain data for 30 days
+	retentionThreshold := time.Now().AddDate(0, 0, -2) // Retain data for 2 days
 
 	// Execute SQL query to delete old data
 	_, err := db.Exec("DELETE FROM github WHERE created_at < $1", retentionThreshold)
 	if err != nil {
 		log.Printf("Error cleaning up data: %v", err)
-	}
-}
-
-// FetchGitHubEvents fetches GitHub events periodically.
-func FetchGitHubEvents() {
-	ticker := time.NewTicker(1 * time.Minute) // Fetch events every 1 minute
-
-	for {
-		select {
-		case <-ticker.C:
-			if !isFetching {
-				isFetching = true
-				go func() {
-					defer func() {
-						isFetching = false
-					}()
-					FetchAndProcessEvents()
-				}()
-			}
-		}
 	}
 }
 
@@ -197,10 +199,9 @@ func FetchAndProcessEvents() {
 			err := storeGitHubEvent(event)
 			if err != nil {
 				log.Printf("Error storing GitHub event: %v", err)
-				// Handle the error as needed (e.g., log it, return an error response, etc.)
 			}
 		}
-		//	CleanupOldData(db)
+		CleanupOldData(db)
 	})
 }
 
